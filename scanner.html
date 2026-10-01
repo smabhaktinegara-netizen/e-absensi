@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanner QR Absensi</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#111827;color:#fff;font-family:Arial,sans-serif;min-height:100vh}
+  .wrap{max-width:520px;margin:0 auto;padding:18px}
+  .card{background:#fff;color:#111827;border-radius:18px;overflow:hidden;box-shadow:0 15px 40px rgba(0,0,0,.35)}
+  .head{background:#111827;color:#fff;padding:18px;text-align:center}
+  .head h1{font-size:20px;margin:0 0 5px}
+  .head p{font-size:12px;margin:0;color:#cbd5e1}
+  #reader{width:100%;min-height:360px;background:#000}
+  .body{padding:16px}
+  .msg{font-size:13px;line-height:1.5;padding:12px;border-radius:10px;background:#eef2ff;color:#3730a3;margin-bottom:12px}
+  .error{background:#fef2f2;color:#b91c1c}
+  button{width:100%;border:0;border-radius:10px;padding:12px;font-weight:700;cursor:pointer;margin-top:8px}
+  .primary{background:#4f46e5;color:#fff}
+  .secondary{background:#e5e7eb;color:#374151}
+  .small{font-size:11px;color:#6b7280;text-align:center;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="head">
+      <h1>Scanner QR Absensi</h1>
+      <p>Arahkan kamera ke QR Code siswa</p>
+    </div>
+    <div class="body">
+      <div id="reader"></div>
+      <div id="msg" class="msg">Meminta izin kamera...</div>
+      <button class="secondary" onclick="closeScanner()">Tutup Scanner</button>
+      <div class="small">Kamera hanya digunakan untuk membaca QR Code.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+let scanner = null;
+let sent = false;
+
+function setMsg(text, error=false) {
+  const el=document.getElementById('msg');
+  el.textContent=text;
+  el.className='msg'+(error?' error':'');
+}
+
+function sendResult(value) {
+  if (sent) return;
+  sent=true;
+  setMsg('QR terbaca. Mengirim hasil ke aplikasi...');
+  if (window.opener && !window.opener.closed) {
+    window.opener.postMessage({
+      type:'ABSENSI_QR_SCAN',
+      value:String(value)
+    }, '*');
+    setTimeout(()=>window.close(), 500);
+  } else {
+    setMsg('Jendela aplikasi utama tidak ditemukan. Jangan tutup tab aplikasi utama.', true);
+    sent=false;
+  }
+}
+
+function start() {
+  const params=new URLSearchParams(location.search);
+  const camera=params.get('camera') || 'environment';
+
+  if (!window.isSecureContext) {
+    setMsg('Scanner harus dibuka melalui HTTPS. Gunakan GitHub Pages atau hosting HTTPS.', true);
+    return;
+  }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setMsg('Browser tidak mendukung akses kamera.', true);
+    return;
+  }
+
+  scanner=new Html5Qrcode('reader');
+  const config={
+    fps:10,
+    qrbox:{width:250,height:250},
+    aspectRatio:1.0
+  };
+
+  scanner.start(
+    {facingMode:camera},
+    config,
+    decodedText => sendResult(decodedText),
+    () => {}
+  ).then(()=>{
+    setMsg('Kamera aktif. Arahkan kamera ke QR Code siswa.');
+  }).catch(err=>{
+    const name=err && err.name ? err.name : '';
+    let message='Gagal mengakses kamera: '+String(err);
+    if(name==='NotAllowedError') {
+      message='Izin kamera ditolak. Klik ikon kamera/gembok di address bar lalu pilih Izinkan, kemudian muat ulang halaman.';
+    } else if(name==='NotFoundError') {
+      message='Kamera tidak ditemukan pada perangkat ini.';
+    } else if(name==='NotReadableError') {
+      message='Kamera sedang digunakan aplikasi lain. Tutup aplikasi kamera/Zoom/Meet lalu coba lagi.';
+    }
+    setMsg(message,true);
+  });
+}
+
+function closeScanner() {
+  if(scanner){
+    scanner.stop().catch(()=>{}).finally(()=>window.close());
+  } else {
+    window.close();
+  }
+}
+
+window.addEventListener('beforeunload',()=>{
+  if(scanner){
+    try{scanner.stop();}catch(e){}
+  }
+});
+
+start();
+</script>
+</body>
+</html>
